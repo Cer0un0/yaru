@@ -5,6 +5,7 @@ import { createIPCClient } from '../infrastructure/ipc-client.js';
 import { createIPCRequest, type IPCResponse } from '../infrastructure/ipc-protocol.js';
 import { isOk } from '../domain/types.js';
 import { type Task } from '../domain/types.js';
+import { type SubtaskProgress, type TaskWithAllSubtasksCompleted } from '../domain/task-service.js';
 
 const VERSION = '1.0.0';
 
@@ -54,21 +55,137 @@ function printTaskDetail(task: Task): void {
   }
 }
 
-function printTaskTable(tasks: Task[]): void {
+interface TaskWithProgress extends Task {
+  subtaskProgress?: SubtaskProgress;
+}
+
+function wrapText(text: string, maxWidth: number, indent: string): string {
+  if (text.length <= maxWidth) {
+    return text;
+  }
+
+  const lines: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxWidth) {
+      lines.push(remaining);
+      break;
+    }
+
+    // 最大幅以内で最後のスペースを探す
+    let breakPoint = remaining.lastIndexOf(' ', maxWidth);
+    if (breakPoint === -1 || breakPoint === 0) {
+      breakPoint = maxWidth;
+    }
+
+    lines.push(remaining.slice(0, breakPoint));
+    remaining = remaining.slice(breakPoint).trimStart();
+  }
+
+  return lines.join('\n' + indent);
+}
+
+function printTaskTableWithTree(tasks: Task[], showDesc: boolean = false): void {
   if (tasks.length === 0) {
     console.log('No tasks found');
     return;
   }
 
+  // 親タスクとサブタスクを分離
+  const parentTasks = tasks.filter(t => !t.parentId);
+  const subtasksByParent = new Map<string, Task[]>();
+
+  for (const task of tasks) {
+    if (task.parentId) {
+      const existing = subtasksByParent.get(task.parentId) || [];
+      existing.push(task);
+      subtasksByParent.set(task.parentId, existing);
+    }
+  }
+
   console.log('ID       Pri Status      Title');
   console.log('-------- --- ----------- ------------------');
-  for (const task of tasks) {
+
+  // ターミナル幅を取得（デフォルト80）
+  const termWidth = process.stdout.columns || 80;
+  // 固定部分の幅: ID(8) + space(1) + Pri(3) + space(1) + Status(11) + space(1) = 25
+  const fixedWidth = 25;
+  const descIndent = ' '.repeat(fixedWidth);
+
+  let taskCount = 0;
+  let subtaskCount = 0;
+
+  for (const task of parentTasks) {
     const id = task.id.slice(0, 8);
     const priority = task.priority === 'high' ? 'H' : task.priority === 'medium' ? 'M' : 'L';
     const status = task.status === 'completed' ? 'completed' : task.status === 'in_progress' ? 'in_progress' : 'pending';
-    console.log(`${id} ${priority.padEnd(3)} ${status.padEnd(11)} ${task.title}`);
+
+    const subtasks = subtasksByParent.get(task.id) || [];
+    const progressStr = subtasks.length > 0
+      ? ` [${subtasks.filter(s => s.status === 'completed').length}/${subtasks.length}]`
+      : '';
+
+    const titlePart = `${task.title}${progressStr}`;
+
+    if (showDesc && task.description) {
+      const titleWidth = titlePart.length;
+      const availableWidth = termWidth - fixedWidth - titleWidth - 3; // " - " の分
+      if (availableWidth > 10) {
+        const wrappedDesc = wrapText(task.description, availableWidth, descIndent + ' '.repeat(titleWidth + 3));
+        console.log(`${id} ${priority.padEnd(3)} ${status.padEnd(11)} ${titlePart} - ${wrappedDesc}`);
+      } else {
+        // 幅が狭すぎる場合は次の行に説明を表示
+        console.log(`${id} ${priority.padEnd(3)} ${status.padEnd(11)} ${titlePart}`);
+        const wrappedDesc = wrapText(task.description, termWidth - fixedWidth, descIndent);
+        console.log(`${descIndent}${wrappedDesc}`);
+      }
+    } else {
+      console.log(`${id} ${priority.padEnd(3)} ${status.padEnd(11)} ${titlePart}`);
+    }
+
+    taskCount++;
+
+    // サブタスクを表示
+    const subFixedWidth = fixedWidth + 4; // prefix "  └ " の分
+    const subDescIndent = ' '.repeat(subFixedWidth);
+
+    for (let i = 0; i < subtasks.length; i++) {
+      const subtask = subtasks[i];
+      const isLast = i === subtasks.length - 1;
+      const prefix = isLast ? '  └' : '  ├';
+      const subId = subtask.id.slice(0, 8);
+      const subPriority = subtask.priority === 'high' ? 'H' : subtask.priority === 'medium' ? 'M' : 'L';
+      const subStatus = subtask.status === 'completed' ? 'completed' : subtask.status === 'in_progress' ? 'in_progress' : 'pending';
+
+      if (showDesc && subtask.description) {
+        const subTitleWidth = subtask.title.length;
+        const subAvailableWidth = termWidth - subFixedWidth - subTitleWidth - 3;
+        if (subAvailableWidth > 10) {
+          const wrappedDesc = wrapText(subtask.description, subAvailableWidth, subDescIndent + ' '.repeat(subTitleWidth + 3));
+          console.log(`${prefix} ${subId} ${subPriority.padEnd(3)} ${subStatus.padEnd(11)} ${subtask.title} - ${wrappedDesc}`);
+        } else {
+          console.log(`${prefix} ${subId} ${subPriority.padEnd(3)} ${subStatus.padEnd(11)} ${subtask.title}`);
+          const wrappedDesc = wrapText(subtask.description, termWidth - subFixedWidth, subDescIndent);
+          console.log(`${subDescIndent}${wrappedDesc}`);
+        }
+      } else {
+        console.log(`${prefix} ${subId} ${subPriority.padEnd(3)} ${subStatus.padEnd(11)} ${subtask.title}`);
+      }
+
+      subtaskCount++;
+    }
   }
-  console.log(`\nTotal: ${tasks.length} task(s)`);
+
+  if (subtaskCount > 0) {
+    console.log(`\nTotal: ${taskCount} task(s), ${subtaskCount} subtask(s)`);
+  } else {
+    console.log(`\nTotal: ${taskCount} task(s)`);
+  }
+}
+
+function printTaskTable(tasks: Task[]): void {
+  printTaskTableWithTree(tasks, false);
 }
 
 async function sendRequest<T>(method: string, params: Record<string, unknown> = {}): Promise<IPCResponse<T> | null> {
@@ -185,6 +302,7 @@ program
   .option('-p, --priority <level>', 'Filter by priority (low|medium|high)')
   .option('--sort <field>', 'Sort by (priority|createdAt|updatedAt)')
   .option('--order <order>', 'Sort order (asc|desc)', 'desc')
+  .option('-D, --desc', 'Show task descriptions')
   .action(async (options) => {
     const response = await sendRequest<Task[]>('task.list', {
       status: options.status,
@@ -194,7 +312,7 @@ program
     });
 
     if (response?.success) {
-      printTaskTable(response.data!);
+      printTaskTableWithTree(response.data!, options.desc || false);
       process.exit(EXIT_SUCCESS);
     } else {
       printError(response?.error?.message ?? 'Failed to list tasks');
@@ -205,11 +323,41 @@ program
 program
   .command('show <id>')
   .description('Show task details')
-  .action(async (id) => {
+  .option('-D, --desc', 'Show task descriptions')
+  .action(async (id, options) => {
     const response = await sendRequest<Task>('task.get', { id });
 
     if (response?.success) {
-      printTaskDetail(response.data!);
+      const task = response.data!;
+      printTaskDetail(task);
+
+      // 親タスクの場合、サブタスク一覧と進捗を表示
+      if (!task.parentId) {
+        const subtasksResponse = await sendRequest<Task[]>('subtask.list', { parentId: task.id });
+        const progressResponse = await sendRequest<SubtaskProgress>('subtask.progress', { parentId: task.id });
+
+        if (subtasksResponse?.success && progressResponse?.success) {
+          const subtasks = subtasksResponse.data!;
+          const progress = progressResponse.data!;
+
+          if (subtasks.length > 0) {
+            console.log('');
+            console.log(`Subtasks:    ${progress.completed}/${progress.total} (${progress.percentage}%)`);
+            for (let i = 0; i < subtasks.length; i++) {
+              const subtask = subtasks[i];
+              const isLast = i === subtasks.length - 1;
+              const prefix = isLast ? '└' : '├';
+              const statusIcon = subtask.status === 'completed' ? '✓' : subtask.status === 'in_progress' ? '▶' : '○';
+              console.log(`  ${prefix} ${statusIcon} ${subtask.id.slice(0, 8)} ${subtask.title}`);
+              if (options.desc && subtask.description) {
+                const descPrefix = isLast ? ' ' : '│';
+                console.log(`  ${descPrefix}   ${subtask.description}`);
+              }
+            }
+          }
+        }
+      }
+
       process.exit(EXIT_SUCCESS);
     } else {
       printError(response?.error?.message ?? 'Task not found');
@@ -276,18 +424,83 @@ program
 program
   .command('search <query>')
   .description('Search tasks')
-  .action(async (query) => {
+  .option('-D, --desc', 'Show task descriptions')
+  .action(async (query, options) => {
     const response = await sendRequest<Task[]>('task.search', { query });
 
     if (response?.success) {
       if (response.data!.length === 0) {
         console.log('No matching tasks found');
       } else {
-        printTaskTable(response.data!);
+        printTaskTableWithTree(response.data!, options.desc || false);
       }
       process.exit(EXIT_SUCCESS);
     } else {
       printError(response?.error?.message ?? 'Search failed');
+      process.exit(EXIT_ERROR);
+    }
+  });
+
+// Subtask commands
+const subtaskCmd = program
+  .command('subtask')
+  .description('Manage subtasks');
+
+subtaskCmd
+  .command('add <parent-id> <title>')
+  .description('Add a subtask to a parent task')
+  .option('-d, --description <desc>', 'Subtask description')
+  .option('-p, --priority <level>', 'Priority (low|medium|high)', 'medium')
+  .action(async (parentId, title, options) => {
+    const response = await sendRequest<Task>('subtask.create', {
+      parentId,
+      title,
+      description: options.description,
+      priority: options.priority,
+    });
+
+    if (response?.success) {
+      printSuccess(`Subtask created: ${response.data!.id.slice(0, 8)}`);
+      process.exit(EXIT_SUCCESS);
+    } else {
+      printError(response?.error?.message ?? 'Failed to create subtask');
+      process.exit(EXIT_ERROR);
+    }
+  });
+
+subtaskCmd
+  .command('done <subtask-id>')
+  .description('Mark a subtask as completed')
+  .action(async (subtaskId) => {
+    const response = await sendRequest<TaskWithAllSubtasksCompleted>('task.updateStatus', {
+      id: subtaskId,
+      status: 'completed',
+    });
+
+    if (response?.success) {
+      const task = response.data as TaskWithAllSubtasksCompleted;
+      printSuccess('Subtask completed');
+      if (task.allSubtasksCompleted) {
+        console.log('💡 All subtasks completed! Consider completing the parent task.');
+      }
+      process.exit(EXIT_SUCCESS);
+    } else {
+      printError(response?.error?.message ?? 'Failed to complete subtask');
+      process.exit(EXIT_ERROR);
+    }
+  });
+
+subtaskCmd
+  .command('delete <subtask-id>')
+  .description('Delete a subtask')
+  .action(async (subtaskId) => {
+    const response = await sendRequest<{ success: boolean }>('task.delete', { id: subtaskId });
+
+    if (response?.success) {
+      printSuccess('Subtask deleted');
+      process.exit(EXIT_SUCCESS);
+    } else {
+      printError(response?.error?.message ?? 'Failed to delete subtask');
       process.exit(EXIT_ERROR);
     }
   });

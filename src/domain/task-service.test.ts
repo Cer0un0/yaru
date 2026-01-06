@@ -362,4 +362,276 @@ describe('TaskService', () => {
       }
     });
   });
+
+  describe('createSubtask', () => {
+    it('親タスクにサブタスクを作成できる', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const result = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク',
+      });
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.data.title).toBe('サブタスク');
+        expect(result.data.parentId).toBe(parentResult.data.id);
+        expect(result.data.status).toBe('pending');
+        expect(result.data.priority).toBe('medium');
+      }
+    });
+
+    it('サブタスクに説明と優先度を設定できる', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const result = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク',
+        description: '詳細な説明',
+        priority: 'high',
+      });
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.data.description).toBe('詳細な説明');
+        expect(result.data.priority).toBe('high');
+      }
+    });
+
+    it('存在しない親タスクIDの場合、NOT_FOUNDエラーを返す', async () => {
+      const result = await taskService.createSubtask({
+        parentId: 'non-existent-id',
+        title: 'サブタスク',
+      });
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(result.error.type).toBe('NOT_FOUND');
+      }
+    });
+
+    it('サブタスクにサブタスクを作成しようとするとVALIDATION_ERRORを返す', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const subtaskResult = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク',
+      });
+      expect(isOk(subtaskResult)).toBe(true);
+      if (!isOk(subtaskResult)) return;
+
+      const result = await taskService.createSubtask({
+        parentId: subtaskResult.data.id,
+        title: 'サブサブタスク',
+      });
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(result.error.type).toBe('VALIDATION_ERROR');
+      }
+    });
+  });
+
+  describe('listSubtasks', () => {
+    it('親タスクのサブタスク一覧を取得できる', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク1',
+      });
+      await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク2',
+      });
+
+      const result = await taskService.listSubtasks(parentResult.data.id);
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.data).toHaveLength(2);
+        expect(result.data[0].title).toBe('サブタスク1');
+        expect(result.data[1].title).toBe('サブタスク2');
+      }
+    });
+
+    it('サブタスクがない場合、空の配列を返す', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const result = await taskService.listSubtasks(parentResult.data.id);
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.data).toEqual([]);
+      }
+    });
+
+    it('存在しない親タスクIDの場合、NOT_FOUNDエラーを返す', async () => {
+      const result = await taskService.listSubtasks('non-existent-id');
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(result.error.type).toBe('NOT_FOUND');
+      }
+    });
+  });
+
+  describe('getProgress', () => {
+    it('サブタスクの進捗率を計算できる', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const sub1 = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク1',
+      });
+      await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク2',
+      });
+
+      if (isOk(sub1)) {
+        await taskService.updateStatus(sub1.data.id, 'completed');
+      }
+
+      const result = await taskService.getProgress(parentResult.data.id);
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.data.total).toBe(2);
+        expect(result.data.completed).toBe(1);
+        expect(result.data.percentage).toBe(50);
+      }
+    });
+
+    it('サブタスクがない場合、0件として返す', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const result = await taskService.getProgress(parentResult.data.id);
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.data.total).toBe(0);
+        expect(result.data.completed).toBe(0);
+        expect(result.data.percentage).toBe(0);
+      }
+    });
+
+    it('全てのサブタスクが完了した場合、100%を返す', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const sub1 = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク1',
+      });
+      const sub2 = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク2',
+      });
+
+      if (isOk(sub1)) {
+        await taskService.updateStatus(sub1.data.id, 'completed');
+      }
+      if (isOk(sub2)) {
+        await taskService.updateStatus(sub2.data.id, 'completed');
+      }
+
+      const result = await taskService.getProgress(parentResult.data.id);
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.data.percentage).toBe(100);
+      }
+    });
+  });
+
+  describe('delete（カスケード削除）', () => {
+    it('親タスク削除時にサブタスクも削除される', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const subtaskResult = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク',
+      });
+      expect(isOk(subtaskResult)).toBe(true);
+      if (!isOk(subtaskResult)) return;
+
+      await taskService.delete(parentResult.data.id);
+
+      // サブタスクも削除されていることを確認
+      const getResult = await taskService.get(subtaskResult.data.id);
+      expect(isErr(getResult)).toBe(true);
+      if (isErr(getResult)) {
+        expect(getResult.error.type).toBe('NOT_FOUND');
+      }
+    });
+  });
+
+  describe('updateStatus（親タスク完了チェック）', () => {
+    it('親タスクが完了済みの場合、サブタスクのステータス変更はPARENT_COMPLETEDエラーを返す', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const subtaskResult = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク',
+      });
+      expect(isOk(subtaskResult)).toBe(true);
+      if (!isOk(subtaskResult)) return;
+
+      // 親タスクを完了に
+      await taskService.updateStatus(parentResult.data.id, 'completed');
+
+      // サブタスクのステータス変更を試みる
+      const result = await taskService.updateStatus(subtaskResult.data.id, 'in_progress');
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(result.error.type).toBe('PARENT_COMPLETED');
+      }
+    });
+
+    it('全サブタスク完了時にallSubtasksCompletedフラグがtrueになる', async () => {
+      const parentResult = await taskService.create({ title: '親タスク' });
+      expect(isOk(parentResult)).toBe(true);
+      if (!isOk(parentResult)) return;
+
+      const sub1 = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク1',
+      });
+      const sub2 = await taskService.createSubtask({
+        parentId: parentResult.data.id,
+        title: 'サブタスク2',
+      });
+      expect(isOk(sub1) && isOk(sub2)).toBe(true);
+      if (!isOk(sub1) || !isOk(sub2)) return;
+
+      await taskService.updateStatus(sub1.data.id, 'completed');
+      const result = await taskService.updateStatus(sub2.data.id, 'completed');
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect((result.data as any).allSubtasksCompleted).toBe(true);
+      }
+    });
+  });
 });

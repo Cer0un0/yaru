@@ -55,6 +55,7 @@ export interface Task {
   updatedAt: string;   // ISO 8601
   startedAt?: string;  // ISO 8601, in_progress時に設定
   completedAt?: string; // ISO 8601, completed時に設定
+  parentId?: TaskId;   // サブタスクの場合、親タスクのID
 }
 
 // TaskStore
@@ -74,7 +75,8 @@ export type TaskError =
   | { type: 'NOT_FOUND'; taskId: TaskId }
   | { type: 'INVALID_STATUS'; status: string }
   | { type: 'VALIDATION_ERROR'; message: string }
-  | { type: 'STORAGE_ERROR'; cause: Error };
+  | { type: 'STORAGE_ERROR'; cause: Error }
+  | { type: 'PARENT_COMPLETED'; parentId: TaskId };
 
 export type StorageError =
   | { type: 'FILE_NOT_FOUND' }

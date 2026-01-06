@@ -4,6 +4,7 @@ import {
   type Task,
   type TaskStatus,
   type Priority,
+  type TaskError,
   ok,
   err,
   isOk,
@@ -120,5 +121,45 @@ describe('Priority検証', () => {
       expect(isValidPriority('')).toBe(false);
       expect(isValidPriority('HIGH')).toBe(false);
     });
+  });
+});
+
+describe('Task型のparentId', () => {
+  it('parentIdはオプショナルである', () => {
+    const taskWithoutParent: Task = {
+      id: 'test-id',
+      title: 'テストタスク',
+      description: '',
+      status: 'pending',
+      priority: 'medium',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    expect(taskWithoutParent.parentId).toBeUndefined();
+  });
+
+  it('parentIdを設定できる', () => {
+    const taskWithParent: Task = {
+      id: 'subtask-id',
+      title: 'サブタスク',
+      description: '',
+      status: 'pending',
+      priority: 'medium',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      parentId: 'parent-id',
+    };
+    expect(taskWithParent.parentId).toBe('parent-id');
+  });
+});
+
+describe('TaskError型のPARENT_COMPLETED', () => {
+  it('PARENT_COMPLETEDエラーを生成できる', () => {
+    const error: TaskError = {
+      type: 'PARENT_COMPLETED',
+      parentId: 'parent-id',
+    };
+    expect(error.type).toBe('PARENT_COMPLETED');
+    expect(error.parentId).toBe('parent-id');
   });
 });

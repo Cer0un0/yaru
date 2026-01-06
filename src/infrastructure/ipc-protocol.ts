@@ -8,6 +8,9 @@ export type IPCMethod =
   | 'task.updateStatus'
   | 'task.delete'
   | 'task.search'
+  | 'subtask.create'
+  | 'subtask.list'
+  | 'subtask.progress'
   | 'daemon.status'
   | 'daemon.stop';
 

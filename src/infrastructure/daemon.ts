@@ -278,6 +278,35 @@ export function createRequestHandler(taskService: TaskService): (request: IPCReq
           return createIPCErrorResponse(id, result.error.type, getErrorMessage(result.error));
         }
 
+        case 'subtask.create': {
+          const result = await taskService.createSubtask({
+            parentId: params.parentId as string,
+            title: params.title as string,
+            description: params.description as string | undefined,
+            priority: params.priority as 'low' | 'medium' | 'high' | undefined,
+          });
+          if (isOk(result)) {
+            return createIPCResponse(id, result.data);
+          }
+          return createIPCErrorResponse(id, result.error.type, getErrorMessage(result.error));
+        }
+
+        case 'subtask.list': {
+          const result = await taskService.listSubtasks(params.parentId as string);
+          if (isOk(result)) {
+            return createIPCResponse(id, result.data);
+          }
+          return createIPCErrorResponse(id, result.error.type, getErrorMessage(result.error));
+        }
+
+        case 'subtask.progress': {
+          const result = await taskService.getProgress(params.parentId as string);
+          if (isOk(result)) {
+            return createIPCResponse(id, result.data);
+          }
+          return createIPCErrorResponse(id, result.error.type, getErrorMessage(result.error));
+        }
+
         case 'daemon.status': {
           return createIPCResponse(id, { status: 'running' });
         }
@@ -298,7 +327,7 @@ export function createRequestHandler(taskService: TaskService): (request: IPCReq
   };
 }
 
-function getErrorMessage(error: { type: string; message?: string; taskId?: string }): string {
+function getErrorMessage(error: { type: string; message?: string; taskId?: string; parentId?: string }): string {
   switch (error.type) {
     case 'NOT_FOUND':
       return `Task not found: ${error.taskId}`;
@@ -308,6 +337,8 @@ function getErrorMessage(error: { type: string; message?: string; taskId?: strin
       return 'Failed to save data';
     case 'INVALID_STATUS':
       return 'Invalid status';
+    case 'PARENT_COMPLETED':
+      return `Parent task is already completed: ${error.parentId}`;
     default:
       return 'An error occurred';
   }
