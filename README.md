@@ -15,7 +15,15 @@ A simple CLI task manager with daemon architecture.
 ## Installation
 
 ```bash
-npm install -g yaru
+# From GitHub
+npm install -g git+https://github.com/Cer0un0/yaru.git
+
+# Or clone and link
+git clone git@github.com:Cer0un0/yaru.git
+cd yaru
+npm install
+npm run build
+npm link
 ```
 
 ## Quick Start
