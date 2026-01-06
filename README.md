@@ -58,7 +58,9 @@ yaru stop                           # Stop daemon
 | `yaru list` | List all tasks (tree view) |
 | `yaru show <id>` | Show task details with subtasks |
 | `yaru update <id>` | Update a task |
+| `yaru begin <id>` | Start working on a task (set to in_progress) |
 | `yaru done <id>` | Mark task as completed |
+| `yaru reopen <id>` | Reopen a task (set to pending) |
 | `yaru delete <id>` | Delete a task (with subtasks) |
 | `yaru search <query>` | Search tasks |
 

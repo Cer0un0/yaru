@@ -389,6 +389,42 @@ program
   });
 
 program
+  .command('begin <id>')
+  .description('Begin working on a task (set to in_progress)')
+  .action(async (id) => {
+    const response = await sendRequest<Task>('task.updateStatus', {
+      id,
+      status: 'in_progress',
+    });
+
+    if (response?.success) {
+      printSuccess('Task begun');
+      process.exit(EXIT_SUCCESS);
+    } else {
+      printError(response?.error?.message ?? 'Failed to begin task');
+      process.exit(EXIT_ERROR);
+    }
+  });
+
+program
+  .command('reopen <id>')
+  .description('Reopen a task (set to pending)')
+  .action(async (id) => {
+    const response = await sendRequest<Task>('task.updateStatus', {
+      id,
+      status: 'pending',
+    });
+
+    if (response?.success) {
+      printSuccess('Task reopened');
+      process.exit(EXIT_SUCCESS);
+    } else {
+      printError(response?.error?.message ?? 'Failed to reopen task');
+      process.exit(EXIT_ERROR);
+    }
+  });
+
+program
   .command('done <id>')
   .description('Mark task as completed')
   .action(async (id) => {
