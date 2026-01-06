@@ -22,6 +22,14 @@ const EXIT_ERROR = 1;
 const EXIT_SYNTAX_ERROR = 2;
 const EXIT_CONNECTION_ERROR = 3;
 
+// ANSI color utilities
+const colors = {
+  red: (text: string) => `\x1b[31m${text}\x1b[0m`,
+  yellow: (text: string) => `\x1b[33m${text}\x1b[0m`,
+  green: (text: string) => `\x1b[32m${text}\x1b[0m`,
+  dim: (text: string) => `\x1b[2m${text}\x1b[0m`,
+};
+
 // Output utilities
 function printSuccess(message: string): void {
   console.log(`✓ ${message}`);
@@ -116,10 +124,22 @@ function printTaskTableWithTree(tasks: Task[], showDesc: boolean = false): void 
   let taskCount = 0;
   let subtaskCount = 0;
 
+  // カラー付きの優先度・ステータス文字列を生成
+  const formatPriority = (p: string): string => {
+    const char = p === 'high' ? 'H' : p === 'medium' ? 'M' : 'L';
+    const padded = char.padEnd(3);
+    return p === 'high' ? colors.red(padded) : padded;
+  };
+
+  const formatStatus = (s: string): string => {
+    const padded = s.padEnd(11);
+    return s === 'in_progress' ? colors.yellow(padded) : padded;
+  };
+
   for (const task of parentTasks) {
     const id = task.id.slice(0, 8);
-    const priority = task.priority === 'high' ? 'H' : task.priority === 'medium' ? 'M' : 'L';
-    const status = task.status === 'completed' ? 'completed' : task.status === 'in_progress' ? 'in_progress' : 'pending';
+    const priority = formatPriority(task.priority);
+    const status = formatStatus(task.status);
 
     const subtasks = subtasksByParent.get(task.id) || [];
     const progressStr = subtasks.length > 0
@@ -133,15 +153,15 @@ function printTaskTableWithTree(tasks: Task[], showDesc: boolean = false): void 
       const availableWidth = termWidth - fixedWidth - titleWidth - 3; // " - " の分
       if (availableWidth > 10) {
         const wrappedDesc = wrapText(task.description, availableWidth, descIndent + ' '.repeat(titleWidth + 3));
-        console.log(`${id} ${priority.padEnd(3)} ${status.padEnd(11)} ${titlePart} - ${wrappedDesc}`);
+        console.log(`${id} ${priority} ${status} ${titlePart} - ${wrappedDesc}`);
       } else {
         // 幅が狭すぎる場合は次の行に説明を表示
-        console.log(`${id} ${priority.padEnd(3)} ${status.padEnd(11)} ${titlePart}`);
+        console.log(`${id} ${priority} ${status} ${titlePart}`);
         const wrappedDesc = wrapText(task.description, termWidth - fixedWidth, descIndent);
         console.log(`${descIndent}${wrappedDesc}`);
       }
     } else {
-      console.log(`${id} ${priority.padEnd(3)} ${status.padEnd(11)} ${titlePart}`);
+      console.log(`${id} ${priority} ${status} ${titlePart}`);
     }
 
     taskCount++;
@@ -155,22 +175,22 @@ function printTaskTableWithTree(tasks: Task[], showDesc: boolean = false): void 
       const isLast = i === subtasks.length - 1;
       const prefix = isLast ? '  └' : '  ├';
       const subId = subtask.id.slice(0, 8);
-      const subPriority = subtask.priority === 'high' ? 'H' : subtask.priority === 'medium' ? 'M' : 'L';
-      const subStatus = subtask.status === 'completed' ? 'completed' : subtask.status === 'in_progress' ? 'in_progress' : 'pending';
+      const subPriority = formatPriority(subtask.priority);
+      const subStatus = formatStatus(subtask.status);
 
       if (showDesc && subtask.description) {
         const subTitleWidth = subtask.title.length;
         const subAvailableWidth = termWidth - subFixedWidth - subTitleWidth - 3;
         if (subAvailableWidth > 10) {
           const wrappedDesc = wrapText(subtask.description, subAvailableWidth, subDescIndent + ' '.repeat(subTitleWidth + 3));
-          console.log(`${prefix} ${subId} ${subPriority.padEnd(3)} ${subStatus.padEnd(11)} ${subtask.title} - ${wrappedDesc}`);
+          console.log(`${prefix} ${subId} ${subPriority} ${subStatus} ${subtask.title} - ${wrappedDesc}`);
         } else {
-          console.log(`${prefix} ${subId} ${subPriority.padEnd(3)} ${subStatus.padEnd(11)} ${subtask.title}`);
+          console.log(`${prefix} ${subId} ${subPriority} ${subStatus} ${subtask.title}`);
           const wrappedDesc = wrapText(subtask.description, termWidth - subFixedWidth, subDescIndent);
           console.log(`${subDescIndent}${wrappedDesc}`);
         }
       } else {
-        console.log(`${prefix} ${subId} ${subPriority.padEnd(3)} ${subStatus.padEnd(11)} ${subtask.title}`);
+        console.log(`${prefix} ${subId} ${subPriority} ${subStatus} ${subtask.title}`);
       }
 
       subtaskCount++;
